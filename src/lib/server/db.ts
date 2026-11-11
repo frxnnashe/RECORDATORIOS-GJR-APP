@@ -28,6 +28,8 @@ export type DeliveryDoc = {
   leaseUntil: Date;
   leaseId?: string;
   finishedAt?: Date;
+  scheduledAt?: Date;
+  acceptedAt?: Date;
   expireAt: Date;
 };
 

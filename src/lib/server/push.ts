@@ -43,7 +43,7 @@ export function endpointId(endpoint: string) {
   return createHash('sha256').update(endpoint).digest('hex');
 }
 
-function sendPush(subscription: PushDoc, payload: { title: string; body: string; url: string; tag: string }, ttl: number) {
+function sendPush(subscription: PushDoc, payload: { title: string; body: string; url: string; tag: string; scheduledAt?: string }, ttl: number) {
   const publicKey = vapidPublicKey();
   if (!publicKey) throw new RequestError('Las notificaciones todavía no están configuradas.', 503);
   return sendNotification(
@@ -113,7 +113,7 @@ async function deliver(data: Data, task: TaskDoc, reminder: Reminder, occurrence
       { _id: id, finishedAt: { $exists: false }, leaseUntil: { $lte: now } },
       {
         $set: { leaseId, leaseUntil: new Date(now.getTime() + 30_000) },
-        $setOnInsert: { expireAt: new Date(new Date(occurrence).getTime() + 2 * day) },
+        $setOnInsert: { scheduledAt: new Date(occurrence), expireAt: new Date(new Date(occurrence).getTime() + 2 * day) },
         $inc: { attempts: 1 },
       },
       { upsert: true, returnDocument: 'after' },
@@ -136,10 +136,11 @@ async function deliver(data: Data, task: TaskDoc, reminder: Reminder, occurrence
 
   try {
     await sendPush(active, {
-      title: 'Reminders GJR',
-      body: current.title,
+      title: current.title,
+      body: reminder.kind === 'recurring' ? 'Recordatorio recurrente' : reminder.kind === 'relative' && reminder.minutes === 0 ? 'Vencimiento' : 'Recordatorio de tarea',
       url: '/?task=' + current._id,
       tag,
+      scheduledAt: occurrence,
     }, 3600);
   } catch (error) {
     if (gone(error)) {
@@ -151,7 +152,8 @@ async function deliver(data: Data, task: TaskDoc, reminder: Reminder, occurrence
     await data.deliveries.updateOne(target, { $set: { leaseUntil: new Date(Date.now() + backoff * 60_000) } });
     return false;
   }
-  await data.deliveries.updateOne(target, { $set: { finishedAt: new Date() } });
+  const acceptedAt = new Date();
+  await data.deliveries.updateOne(target, { $set: { finishedAt: acceptedAt, acceptedAt } });
   return true;
 }
 

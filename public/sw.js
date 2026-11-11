@@ -20,6 +20,17 @@ self.addEventListener('fetch', (event) => {
   }));
 });
 
+function notificationBody(payload) {
+  const body = payload.body || 'Tenés un recordatorio.';
+  const scheduledAt = new Date(payload.scheduledAt);
+  if (!Number.isFinite(scheduledAt.getTime())) return body;
+  const today = new Date().toDateString() === scheduledAt.toDateString();
+  const date = new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit', minute: '2-digit', ...(today ? {} : { day: 'numeric', month: 'short' }),
+  }).format(scheduledAt);
+  return body + ' · Programado ' + (today ? 'a las ' : 'para el ') + date;
+}
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
@@ -28,7 +39,7 @@ self.addEventListener('push', (event) => {
     payload = {};
   }
   event.waitUntil(self.registration.showNotification(payload.title || 'Reminders GJR', {
-    body: payload.body || 'Tenés un recordatorio.',
+    body: notificationBody(payload),
     icon: '/icons/icon-192.png',
     tag: payload.tag || 'reminders',
     data: { url: payload.url || '/?view=today' },

@@ -322,3 +322,15 @@ a { color: var(--accent-deep); text-underline-offset: .19em; }
 @media (max-width: 430px) {
   .repeat-fields { grid-template-columns: 1fr; }
 }
+
+.dictation { margin-bottom: 16px; }
+.dictation > .callout { margin-top: 8px; }
+.dictation-input { margin-top: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; }
+.dictation-input .field-hint { margin: 6px 0 10px; }
+
+.create-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 550px) {
+  .workspace-heading { flex-wrap: wrap; gap: 12px; }
+  .create-actions { width: 100%; }
+  .create-actions .button { min-height: 44px; }
+}

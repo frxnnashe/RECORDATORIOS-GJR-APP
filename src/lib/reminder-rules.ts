@@ -54,16 +54,11 @@ export function updateReminders(
 }
 
 const day = 86_400_000;
+type RecurringReminder = Extract<Reminder, { kind: 'recurring' }>;
 
-export function latestOccurrence(reminder: Reminder, now: Date): string | null {
-  const latest = now.toISOString();
-  const earliest = new Date(now.getTime() - day).toISOString();
-  if (reminder.fireAt > latest) return null;
-  if (reminder.kind !== 'recurring') return reminder.fireAt > earliest ? reminder.fireAt : null;
-
-  const zone = reminder.timeZone;
-  const start = Temporal.Instant.from(reminder.fireAt).toZonedDateTimeISO(zone);
-  const current = Temporal.Instant.from(latest).toZonedDateTimeISO(zone);
+function occurrenceNear(reminder: RecurringReminder, reference: string, direction: 'past' | 'future') {
+  const start = Temporal.Instant.from(reminder.fireAt).toZonedDateTimeISO(reminder.timeZone);
+  const current = Temporal.Instant.from(reference).toZonedDateTimeISO(reminder.timeZone);
   const days = start.toPlainDate().until(current.toPlainDate()).days;
   const stepDays = reminder.unit === 'week' ? reminder.interval * 7 : reminder.interval;
   const months = (current.year - start.year) * 12 + current.month - start.month;
@@ -73,11 +68,27 @@ export function latestOccurrence(reminder: Reminder, now: Date): string | null {
     ? start.add({ months: index * reminder.interval })
     : start.add({ days: index * stepDays });
 
+  if (direction === 'future') step = Math.max(0, step);
   let occurrence = atStep(step);
-  if (Temporal.ZonedDateTime.compare(occurrence, current) > 0) occurrence = atStep(--step);
+  const comparison = Temporal.ZonedDateTime.compare(occurrence, current);
+  if (direction === 'past' && comparison > 0) occurrence = atStep(--step);
+  if (direction === 'future' && comparison <= 0) occurrence = atStep(++step);
   if (step < 0 || (reminder.until && occurrence.toPlainDate().toString() > reminder.until)) return null;
 
   const fireAt = occurrence.toInstant().toString({ fractionalSecondDigits: 3 });
-  return fireAt > earliest && fireAt >= reminder.activatedAt ? fireAt : null;
+  return fireAt >= reminder.activatedAt ? fireAt : null;
 }
 
+export function latestOccurrence(reminder: Reminder, now: Date): string | null {
+  const latest = now.toISOString();
+  const earliest = new Date(now.getTime() - day).toISOString();
+  if (reminder.fireAt > latest) return null;
+  const fireAt = reminder.kind === 'recurring' ? occurrenceNear(reminder, latest, 'past') : reminder.fireAt;
+  return fireAt && fireAt > earliest ? fireAt : null;
+}
+
+export function nextOccurrence(reminder: Reminder, now: Date): string | null {
+  const reference = now.toISOString();
+  if (reminder.kind !== 'recurring') return reminder.fireAt > reference ? reminder.fireAt : null;
+  return occurrenceNear(reminder, reference, 'future');
+}

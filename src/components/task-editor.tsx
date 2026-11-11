@@ -4,7 +4,7 @@ import { Bell, CalendarDays, Check, ListChecks, Mic, Plus, Repeat2, Trash2, X } 
 import { useState, type FormEvent } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 import {
-  priorities, priorityLabels, recurrenceUnits, statuses, statusLabels, type Project, type RecurrenceUnit, type Reminder, type ReminderInput,
+  priorities, priorityLabels, recurrenceUnits, statuses, statusLabels, type Project, type RecurrenceUnit, type ReminderInput,
   type Status, type Task, type TaskInput, type WorkspaceAction,
 } from '@/lib/model';
 import { errorMessage } from '@/lib/client-api';
@@ -28,8 +28,8 @@ function zonedDateTime(instant: string, timeZone: string) {
   return Temporal.Instant.from(instant).toZonedDateTimeISO(timeZone).toPlainDateTime().toString({ smallestUnit: 'minute' });
 }
 
-function reminderDraft(item: Reminder): ReminderDraft {
-  const base = { key: item.id, kind: item.kind, minutes: 0, date: '' };
+function reminderDraft(item: ReminderInput, key: string): ReminderDraft {
+  const base = { key, kind: item.kind, minutes: 0, date: '' };
   if (item.kind === 'relative') return { ...base, minutes: item.minutes };
   if (item.kind === 'fixed') return { ...base, date: localDateTime(item.at) };
   return {
@@ -59,15 +59,23 @@ const reminderOptions = [
   [120, '2 h antes'], [1440, '24 h antes'], [2880, '2 días antes'], [4320, '3 días antes'], [10080, '7 días antes'],
 ] as const;
 
-export function TaskEditor({ task, projects, defaultProject, defaultStatus, onClose, onSave }: {
+export function TaskEditor({ task, projects, defaultProject, defaultStatus, startWithDictation, onClose, onSave }: {
   task?: Task; projects: Project[]; defaultProject: string | null; defaultStatus: Status;
-  onClose: () => void; onSave: (action: WorkspaceAction) => Promise<void>;
+  startWithDictation?: boolean; onClose: () => void; onSave: (action: WorkspaceAction) => Promise<void>;
 }) {
   const [dueAt, setDueAt] = useState(localDateTime(task?.dueAt ?? null));
   const [status, setStatus] = useState(task?.status ?? defaultStatus);
+  const [title, setTitle] = useState(task?.title ?? '');
+  const [description, setDescription] = useState(task?.description ?? '');
+  const [projectId, setProjectId] = useState(task ? task.projectId ?? '' : defaultProject ?? '');
+  const [priority, setPriority] = useState<TaskInput['priority']>(task?.priority ?? 'normal');
+  const [showDictation, setShowDictation] = useState(Boolean(startWithDictation));
+  const [transcript, setTranscript] = useState('');
+  const [dictationNotice, setDictationNotice] = useState('');
+  const [interpreting, setInterpreting] = useState(false);
   const [checklist, setChecklist] = useState(task?.checklist ?? []);
   const [checklistText, setChecklistText] = useState('');
-  const [reminders, setReminders] = useState<ReminderDraft[]>(() => task?.reminders.map(reminderDraft) ?? []);
+  const [reminders, setReminders] = useState<ReminderDraft[]>(() => task?.reminders.map((item) => reminderDraft(item, item.id)) ?? []);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
@@ -103,11 +111,50 @@ export function TaskEditor({ task, projects, defaultProject, defaultStatus, onCl
     }
   }
 
+  async function applyDictation() {
+    setDictationNotice('');
+    setInterpreting(true);
+    try {
+      const { interpretTask } = await import('@/lib/dictation');
+      const result = interpretTask(transcript, projects, new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone);
+      const warnings = [...result.warnings];
+      if (result.title.length > 160) warnings.push('Acortá el título a 160 caracteres.');
+      else if (result.title) setTitle(result.title);
+      else if (!title.trim()) warnings.push('Completá el título antes de guardar.');
+      if (result.description !== undefined) setDescription(result.description);
+      if (result.projectId) setProjectId(result.projectId);
+      if (result.priority) setPriority(result.priority);
+      if (result.dueAt) setDueAt(localDateTime(result.dueAt));
+
+      const next = [...reminders];
+      for (const suggestion of result.reminders) {
+        const candidate = reminderDraft(suggestion, crypto.randomUUID());
+        const duplicate = next.some((item) =>
+          item.kind === candidate.kind && item.date === candidate.date && item.minutes === candidate.minutes
+            && item.interval === candidate.interval && item.unit === candidate.unit && item.until === candidate.until
+            && item.timeZone === candidate.timeZone,
+        );
+        if (duplicate) continue;
+        if (next.length >= 10) {
+          warnings.push('La tarea admite hasta diez avisos.');
+          break;
+        }
+        next.push(candidate);
+      }
+      setReminders(next);
+      setDictationNotice(['Revisá los campos y guardá la tarea.', ...warnings].join(' '));
+      setShowDictation(false);
+    } catch {
+      setDictationNotice('No pudimos interpretar la frase. Podés editarla o completar la tarea.');
+    } finally {
+      setInterpreting(false);
+    }
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const title = String(form.get('title')).trim();
-    if (!title) {
+    if (!title.trim()) {
       setError('Escribí un título para la tarea.');
       return;
     }
@@ -138,11 +185,11 @@ export function TaskEditor({ task, projects, defaultProject, defaultStatus, onCl
     }
 
     const input: TaskInput = {
-      title,
-      description: String(form.get('description')),
-      projectId: String(form.get('projectId')) || null,
+      title: title.trim(),
+      description,
+      projectId: projectId || null,
       status,
-      priority: String(form.get('priority')) as TaskInput['priority'],
+      priority,
       dueAt: isoDate(dueAt),
       tags,
       checklist: checklistText.trim() && checklist.length < 30
@@ -158,15 +205,29 @@ export function TaskEditor({ task, projects, defaultProject, defaultStatus, onCl
   return <Panel title={task ? 'Editar tarea' : 'Nueva tarea'} onClose={() => { if (!busy) onClose(); }}>
     <form onSubmit={submit} className="editor-form">
       <div className="panel-content">
-        <label>Título<input name="title" maxLength={160} required defaultValue={task?.title} placeholder="¿Qué necesitás hacer?" /></label>
-        <p className="field-hint"><Mic size={14} /> En iPhone podés dictar desde el micrófono del teclado.</p>
-        <label>Descripción<textarea name="description" rows={3} maxLength={5000} defaultValue={task?.description} placeholder="Agregá detalles o próximos pasos" /></label>
+        {!task && <div className="dictation">
+          <button type="button" className="button secondary" aria-expanded={showDictation}
+            onClick={() => setShowDictation(!showDictation)}><Mic size={16} /> Dictar tarea</button>
+          {showDictation && <div className="dictation-input">
+            <label>Frase de la tarea
+              <textarea rows={3} maxLength={1200} autoFocus={startWithDictation} value={transcript} onChange={(event) => setTranscript(event.target.value)}
+                placeholder="Hola, cargá un recordatorio para mañana. Título: Revisar el formulario. Avisame cada dos días a las nueve." />
+            </label>
+            <p className="field-hint">Usá el micrófono del teclado del iPhone o escribí la frase.</p>
+            <button type="button" className="button primary" disabled={interpreting || !transcript.trim()}
+              onClick={() => void applyDictation()}>{interpreting ? 'Interpretando…' : 'Interpretar dictado'}</button>
+          </div>}
+          {dictationNotice && <p className="callout" role="status">{dictationNotice}</p>}
+        </div>}
+        <label>Título<input name="title" maxLength={160} required value={title}
+          onChange={(event) => setTitle(event.target.value)} placeholder="¿Qué necesitás hacer?" /></label>
+        <label>Descripción<textarea name="description" rows={3} maxLength={5000} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Agregá detalles o próximos pasos" /></label>
         <div className="field-row project-fields">
-          <label>Proyecto<select name="projectId" defaultValue={task?.projectId ?? defaultProject ?? ''}>
+          <label>Proyecto<select name="projectId" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
             <option value="">Bandeja de entrada</option>
             {projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select></label>
-          <label>Prioridad<select name="priority" defaultValue={task?.priority ?? 'normal'}>
+          <label>Prioridad<select name="priority" value={priority} onChange={(event) => setPriority(event.target.value as TaskInput['priority'])}>
             {priorities.map((item) => <option key={item} value={item}>{priorityLabels[item]}</option>)}
           </select></label>
         </div>
@@ -229,6 +290,8 @@ export function TaskEditor({ task, projects, defaultProject, defaultStatus, onCl
                     }
                   }}>
                   {dueAt && reminderOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {dueAt && item.kind === 'relative' && !reminderOptions.some(([value]) => value === item.minutes)
+                    && <option value={item.minutes}>{item.minutes} min antes</option>}
                   <option value="fixed">Una sola vez</option>
                   <option value="recurring">Repetir…</option>
                 </select>

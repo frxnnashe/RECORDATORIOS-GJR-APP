@@ -27,7 +27,7 @@ Los avisos pueden ser relativos al vencimiento, puntuales o recurrentes. En **A�
 
 ## Dictado y widget
 
-- Para dictar, enfocá **Título** o **Descripción** de una tarea y tocá el micrófono del teclado de iOS.
-- Instalá Scriptable. Descargá el script desde **Configuración → Widget de Scriptable** y pegalo en un script nuevo. Ejecutalo, ingresá la URL publicada y la clave generada en Reminders GJR. Desde la pantalla de inicio agregá un widget de Scriptable y elegí el script. iOS decide el momento de actualización. Generar otra clave invalida la anterior.
+- En **Cargar por voz**, tocá el micrófono del teclado del iPhone, dictá y elegí **Interpretar dictado**. Revisá el borrador y guardalo. Podés incluir título, descripción, vencimiento, proyecto, prioridad y varios avisos en la misma frase. La interpretación del texto se ejecuta en el navegador.
+- En **Configuración → Widget de Scriptable**, descargá el script y reemplazá el contenido de tu script anterior. Conserva la vinculación guardada. En el widget seleccioná **Run Script** en **When Interacting** y tocá **Actualizar y ver** para consultar los datos al momento. iOS decide cuándo redibuja el widget. Usá el ícono de Reminders GJR para abrir la PWA instalada. Generar otra clave invalida la anterior.
 
 Ejecutá `npm test`, `npm run lint` y `npm run build` para verificar cambios.

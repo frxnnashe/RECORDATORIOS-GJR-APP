@@ -116,7 +116,7 @@ export function SettingsPanel({ publicKey, onClose }: { publicKey: string; onClo
       {notice && <p className="callout" role="status">{notice}</p>}
       <section className="settings-group">
         <div className="settings-heading"><span><Bell size={19} /></span><h3>Notificaciones</h3></div>
-        <p>Recibí avisos programados aunque la app esté cerrada.</p>
+        <p>Recibí avisos programados aunque la app esté cerrada. El envío puede demorar unos minutos después de la hora elegida.</p>
         {!publicKey && <p className="callout">El envío de avisos todavía no está configurado.</p>}
         {status === 'blocked' && <p className="callout">Habilitá los avisos para Reminders GJR en los ajustes del dispositivo.</p>}
         {status === 'unavailable' && <p className="callout">En iPhone, agregá la app a la pantalla de inicio y abrila desde su ícono.</p>}
@@ -141,14 +141,14 @@ export function SettingsPanel({ publicKey, onClose }: { publicKey: string; onClo
       </section>
       <section className="settings-group">
         <div className="settings-heading"><span><SquareStack size={19} /></span><h3>Widget de Scriptable</h3></div>
-        <p>Mostrá tus últimas tareas pendientes en la pantalla de inicio.</p>
+        <p>Consultá tus próximos avisos y vencimientos desde la pantalla de inicio.</p>
         <ol>
           <li>Instalá <a href="https://scriptable.app/" target="_blank" rel="noreferrer">Scriptable <ExternalLink size={12} /></a> en tu iPhone.</li>
-          <li>Descargá el archivo, compartilo con Scriptable o pegá su contenido en un script nuevo.</li>
-          <li>Ejecutá el script, ingresá la URL de Reminders GJR y la clave. Luego agregá un widget de Scriptable y elegí el script.</li>
+          <li>Descargá el archivo y pegá su contenido en tu script actual o en uno nuevo.</li>
+          <li>Elegí tu script en el widget y seleccioná Run Script en When Interacting. Al tocarlo, elegí Actualizar y ver.</li>
         </ol>
         <div className="settings-actions">
-          <a className="button secondary" href="/widget/reminders-gjr.js" download><Download size={16} /> Descargar script</a>
+          <a className="button secondary" href="/widget/reminders-gjr.js?v=2" download><Download size={16} /> Descargar script</a>
           <button className="button secondary" disabled={!!busy} onClick={() => void run('widget', async () => {
             const result = await api<{ token: string }>('/api/widget/token', 'POST');
             setToken(result.token);

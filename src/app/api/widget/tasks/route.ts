@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
-import { database } from '@/lib/server/db';
+import { nextOccurrence } from '@/lib/reminder-rules';
+import { database, type TaskDoc } from '@/lib/server/db';
 import { errorResponse, RequestError } from '@/lib/server/http';
+
+type WidgetEntry = Pick<TaskDoc, '_id' | 'title' | 'dueAt' | 'projectId' | 'reminders' | 'priority' | 'createdAt'>;
 
 export async function GET(request: Request) {
   try {
@@ -12,23 +15,40 @@ export async function GET(request: Request) {
 
     const entries = await tasks.find({ ownerId: credential.ownerId, status: { $ne: 'done' } })
       .sort({ createdAt: -1 })
-      .limit(4)
-      .project<{ _id: string; title: string; dueAt: Date | null; projectId: string | null }>({ title: 1, dueAt: 1, projectId: 1 })
+      .project<WidgetEntry>({ title: 1, dueAt: 1, projectId: 1, reminders: 1, priority: 1, createdAt: 1 })
       .toArray();
-    const projectIds = entries.flatMap((entry) => entry.projectId ? [entry.projectId] : []);
+    const now = new Date();
+    const sorted = entries.map((task) => {
+      const nextReminderAt = task.reminders.map((reminder) => nextOccurrence(reminder, now))
+        .filter((date): date is string => date !== null).sort()[0] ?? null;
+      const futureDue = task.dueAt && task.dueAt > now ? task.dueAt.toISOString() : null;
+      const upcoming = [nextReminderAt, futureDue].filter(Boolean).sort()[0] ?? null;
+      return { task, nextReminderAt, upcoming };
+    }).sort((a, b) => {
+      if (a.upcoming && b.upcoming) return a.upcoming.localeCompare(b.upcoming);
+      if (a.upcoming || b.upcoming) return a.upcoming ? -1 : 1;
+      if (a.task.dueAt && b.task.dueAt) return b.task.dueAt.getTime() - a.task.dueAt.getTime();
+      if (a.task.dueAt || b.task.dueAt) return a.task.dueAt ? -1 : 1;
+      return b.task.createdAt.getTime() - a.task.createdAt.getTime();
+    });
+    const visible = sorted.slice(0, 8);
+    const projectIds = visible.flatMap(({ task }) => task.projectId ? [task.projectId] : []);
     const names = new Map((await projects.find({ _id: { $in: projectIds }, ownerId: credential.ownerId })
       .project<{ _id: string; name: string }>({ name: 1 }).toArray()).map((project) => [project._id, project.name]));
 
     return Response.json({
-      tasks: entries.map((entry) => ({
-        id: entry._id,
-        title: entry.title,
-        project: entry.projectId ? names.get(entry.projectId) ?? null : null,
-        dueAt: entry.dueAt?.toISOString() ?? null,
+      totalPending: entries.length,
+      generatedAt: now.toISOString(),
+      tasks: visible.map(({ task, nextReminderAt }) => ({
+        id: task._id,
+        title: task.title,
+        project: task.projectId ? names.get(task.projectId) ?? null : null,
+        dueAt: task.dueAt?.toISOString() ?? null,
+        priority: task.priority,
+        nextReminderAt,
       })),
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     return errorResponse(error);
   }
 }
-

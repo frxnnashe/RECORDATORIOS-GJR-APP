@@ -2,7 +2,7 @@
 
 import {
   Bell, CalendarClock, CalendarDays, CheckCircle2, ChevronRight, Circle, Clock3, Columns3,
-  Folder, Inbox, LayoutGrid, List, LogOut, Menu, Pencil, Plus, Search, Settings, X,
+  Folder, Inbox, LayoutGrid, List, LogOut, Menu, Mic, Pencil, Plus, Search, Settings, X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, errorMessage } from '@/lib/client-api';
@@ -16,7 +16,7 @@ import { SettingsPanel } from './settings-panel';
 
 type View = 'board' | 'today' | 'inbox' | `project:${string}`;
 type Editor =
-  | { kind: 'task'; task?: Task; status: Status }
+  | { kind: 'task'; task?: Task; status: Status; dictation?: boolean }
   | { kind: 'project'; project?: Project }
   | { kind: 'settings' };
 
@@ -247,7 +247,16 @@ export function Dashboard({ initial, user, publicKey, initialTaskId, initialToda
             <p>{view === 'today' ? 'Vencimientos y próximos plazos.' : view === 'inbox'
               ? 'Tareas que todavía no tienen proyecto.' : selectedProject ? 'Tareas de este proyecto.' : 'Organizá las tareas de todos tus proyectos.'}</p>
           </div>
-          <button className="button primary create-task" onClick={() => { setNotice(''); setEditor({ kind: 'task', status: 'pending' }); }}><Plus size={20} /> Nueva tarea</button>
+          <div className="create-actions">
+            <button className="button secondary create-task" onClick={() => {
+              setNotice('');
+              setEditor({ kind: 'task', status: 'pending', dictation: true });
+            }}><Mic size={18} /> Cargar por voz</button>
+            <button className="button primary create-task" onClick={() => {
+              setNotice('');
+              setEditor({ kind: 'task', status: 'pending' });
+            }}><Plus size={20} /> Nueva tarea</button>
+          </div>
         </header>
 
         <div className="workspace-stats" aria-label="Resumen de tareas">
@@ -324,7 +333,7 @@ export function Dashboard({ initial, user, publicKey, initialTaskId, initialToda
     </div>
 
     {editor?.kind === 'task' && <TaskEditor task={editor.task} projects={data.projects} defaultProject={selectedProject?.id ?? null}
-      defaultStatus={editor.status} onClose={closeEditor} onSave={save} />}
+      defaultStatus={editor.status} startWithDictation={editor.dictation} onClose={closeEditor} onSave={save} />}
     {editor?.kind === 'project' && <ProjectEditor project={editor.project} onClose={closeEditor} onSave={save} />}
     {editor?.kind === 'settings' && <SettingsPanel publicKey={publicKey} onClose={closeEditor} />}
   </div>;
